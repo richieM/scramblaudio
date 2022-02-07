@@ -15,7 +15,6 @@ So, to do that, I need:
 - A runner, which "renders" the MIDI with the samples and writes to disk
 
 See what code I already have that helps me do this
-
 '''
 
 import librosa
@@ -30,10 +29,12 @@ import random
 import soundfile as sf
 from scipy import signal
 import string
+from math import exp
+from collections import defaultdict
 
 WAV_DIR = "./wavs/nonverbalVocalization/"
 SAMPLE_RATE = 44100
-allOfEm = {}
+allOfEm = defaultdict(dict)
 hopLength = 512
 OUTPUT_PATH = "./outputAudio/infinityPool/"
 
@@ -47,12 +48,21 @@ def readInFilesAndGetOnsets(WAV_DIR):
             ##print(len(path) * '---', currFile)
             if currFile.endswith(".wav"):
                 fullPath = "%s/%s" % (root, currFile)
+
+                audioType = fullPath.split('/')[3]
+
                 y, sr = librosa.load(fullPath)
+
                 newFileName = currFile.replace(" ", "_")
-                allOfEm[newFileName] = {"rawAudio": y}
-                allOfEm[newFileName]["sr"] = sr
-                allOfEm[newFileName]['onsets'] = librosa.onset.onset_detect(y=y, sr=sr, hop_length=hopLength)
+                currData = {"rawAudio": y,
+                            "sr": sr,
+                            "onsets": librosa.onset.onset_detect(y=y, sr=sr, hop_length=hopLength)
+                            }
+
+                allOfEm[audioType][newFileName] = currData
+
                 print("%s imported!" % currFile)
+
     return allOfEm
 
 def createAudioFromSamples(allOfEm, startingAudioLengthSeconds=0.1, howManyLoopies=100):
@@ -109,6 +119,11 @@ def createMIDI():
     So, I guess this generates some MIDI data?
     Depending on what the instrument type (or whatever) is, there
     doesnt even need to be pitch info, it can just be an on and off, right? And that is a signal for the sample to be written
+
+    Would be cool to create a DSL for specifying midi patterns, and then I can just write an engine to convert that to a MIDIFile
+
+    What might that look like?
+    {"Track1" : {}}
     '''
     degrees  = [60, 62, 64, 65, 67, 69, 71, 72]  # MIDI note number
     track    = 0
@@ -136,11 +151,46 @@ def createMIDI():
     with open("major-scale.mid", "wb") as output_file:
          MyMIDI.writeFile(output_file)
 
+def createAudioR2P(allOfEm, audioType):
+    rp2Fxn = lambda x : 1/exp(0.13*x)
+    someNoise = np.array(0)
+    startTime = 0
+
+    for i in range(400):
+        # Pick a random sample
+        currSpecificAudio = allOfEm[audioType][random.choice(list(allOfEm[audioType].keys()))]
+
+        # How long this sample will play
+        currSampleDurationInSamples = rp2Fxn(startTime) * currSpecificAudio['sr']
+
+        # Get first onset
+        # TODO -- experiment -- first onset vs random onset?
+        # firstOnsetHopWindow = currSpecificAudio['onsets'][0]
+        randomOnsetHopWindow = random.choice(currSpecificAudio['onsets'])
+
+        # Get that audio dawgio
+        begPoint = hopLength*randomOnsetHopWindow
+        endPoint = begPoint + currSampleDurationInSamples
+        endPoint = len(currSpecificAudio['rawAudio']) if endPoint > len(currSpecificAudio['rawAudio']) else endPoint
+        datAudio = currSpecificAudio['rawAudio'][int(begPoint):int(endPoint)]
+        print("%d -- %f samples" % (i, (endPoint - begPoint)))
+
+        someNoise = np.append(someNoise, datAudio)
+
+        startTime += rp2Fxn(startTime)
+
+    randomFileName = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(6))
+
+    sf.write(OUTPUT_PATH + randomFileName + ".wav", someNoise, SAMPLE_RATE)
+    print("%s written!" % randomFileName)
+
+    return someNoise
 
 if __name__ == "__main__":
     from pathlib import Path
 
-    savedPicklePath = "./audioPickles/nonverbalVocalization.p"
+    #savedPicklePath = "./audioPickles/nonverbalVocalization.p"
+    savedPicklePath = "./audioPickles/nonverbalVocalizationByType.p"
 
     pastAudioPickle = Path(savedPicklePath)
     if pastAudioPickle.is_file():
@@ -149,11 +199,14 @@ if __name__ == "__main__":
             allDemAudio = pickle.load(handle)
     else:
         print("No pickle -- reading in and saving audio")
-        allDemAudio = readInFilescuAndGetOnsets(WAV_DIR)
+        allDemAudio = readInFilesAndGetOnsets(WAV_DIR)
+        import pdb; pdb.set_trace()
         with open(savedPicklePath, "wb") as handle:
             pickle.dump(allDemAudio, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    import pdb; pdb.set_trace()
-
+    '''
     x = createAudioFromSamples(allDemAudio, startingAudioLengthSeconds=0.2, howManyLoopies=100)
+    '''
     #scramblaudio(x)
+
+    x = createAudioR2P(allDemAudio, audioType='yawning')

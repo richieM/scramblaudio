@@ -88,6 +88,38 @@ def createGlitchyMIDI():
     with open("crazyMidiOutputs/" + randomFileName, "wb") as output_file:
          MyMIDI.writeFile(output_file)
 
+def timeSignatureOverlap():
+    track    = 0
+    pitch    = 60
+    channel  = 0
+    time     = 0    # In beats
+    # duration = 1    # In beats
+    tempo    = 120   # In BPM
+    volume   = 100  # 0-127, as per the MIDI standard
+
+    MyMIDI = MIDIFile(1)  # One track, defaults to format 1 (tempo track is created
+                           # automatically)
+    MyMIDI.addTempo(track, time, tempo)
+
+    howManyBeats = 16
+    howManyDiffSamples = 4
+    currPitch = 60
+
+    for i in range(howManyBeats):
+        time = i
+        for count, numSubdivisions in enumerate([3,4,5,7]):
+            stepDuration = 1. / numSubdivisions
+            for howMany in range(numSubdivisions):
+                MyMIDI.addNote(track, channel, currPitch+count, time, stepDuration, volume)
+                time += stepDuration
+
+    randomFileName = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(6)) + ".mid"
+
+    with open("crazyMidiOutputs/overlap_" + randomFileName, "wb") as output_file:
+         MyMIDI.writeFile(output_file)
+
+
 if __name__ == "__main__":
     #createMIDI()
-    createGlitchyMIDI()
+    #createGlitchyMIDI()
+    timeSignatureOverlap()

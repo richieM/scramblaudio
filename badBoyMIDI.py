@@ -32,10 +32,25 @@ defaultPitch = 60
 
 import pretty_midi as pm
 
-def parseIntoNotes(pattern, currRecursiveDepth, instr, startTime, endTime):
+def recurseGrammar(pattern, currRecursiveDepth, instr, startTime, endTime, deeper=False):
     """
     Recursively parse shit!
     """
+    if deeper:
+        woah = "notToday"
+        """
+        #pattern = [1, 1, 3]
+        pattern = [1, 3, 2, 2] # sum 8
+        0-0.125 note,
+        one var is how much space
+        one is arpeggiator pattern and how many times to hit
+        deeperPattern = [1, 3[5], 2, 4[7]]
+
+        DSL as json or xml?
+        noo
+        """
+    # deeperPattern = [1, 3[5], 2, 4[7]]
+
     currStartTime = startTime
     chunkTime = (endTime-startTime)/sum(pattern)
 
@@ -44,7 +59,8 @@ def parseIntoNotes(pattern, currRecursiveDepth, instr, startTime, endTime):
         for event in pattern:
             currEndTime = currStartTime + chunkTime*event
 
-            parseIntoNotes(pattern=pattern, currRecursiveDepth=currRecursiveDepth-1, startTime=currStartTime, endTime=currEndTime, instr=instr)
+            # recursion!
+            recurseGrammar(pattern=pattern, currRecursiveDepth=currRecursiveDepth-1, startTime=currStartTime, endTime=currEndTime, instr=instr)
 
             currStartTime = currEndTime
     else:
@@ -55,42 +71,54 @@ def parseIntoNotes(pattern, currRecursiveDepth, instr, startTime, endTime):
             instr.notes.append(currNote)
             currStartTime = currEndTime
 
-    # TODO no return because it's pass by value?
+    print("wowio recurse %d!" % currRecursiveDepth)
 
-    print("wowio")
-
-def somethingClever(unitLengthMillis):
+def somethingClever(pattern, recursiveDepth, unitLengthSecs):
+    # TODO need to sort this pattern crapola
     # Takes in some stuff, maybe a pattern or schema
-    """
-    No way around it, this has to involve some kind of grammar or pattern pyparsing
-    There could be rhythm parsing and also measure parsing and also song parsing
-
-    A = pattern
-    B = pattern
-    B = pattern
-
-
-    Grammar
-    """
     myMusic = pm.PrettyMIDI()
     # Create an Instrument instance for a cello instrument
-    myMusicProgram = pm.instrument_name_to_program('Cello')
+    myMusicProgram = pm.instrument_name_to_program('cello')
     instr1 = pm.Instrument(program=myMusicProgram)
 
-    #pattern = [1, 1, 3]
-    pattern = [1, 3, 2, 2]
-
-    recursiveDepth = 4
-    parseIntoNotes(pattern=pattern, currRecursiveDepth=recursiveDepth, startTime=0, endTime=unitLengthMillis, instr=instr1)
+    recurseGrammar(pattern=pattern, currRecursiveDepth=recursiveDepth, startTime=0, endTime=unitLengthSecs, instr=instr1)
+    # deeperPatternGrammar(pattern=deeperPattern, currRecursiveDepth=recursiveDepth, startTime=0, endTime=unitLengthMillis, instr=instr1, deep=True)
 
     myMusic.instruments.append(instr1)
 
     myMusic.write("woahnow.mid")
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
+    return myMusic
 
-    print("wuoh")
+    print("wuoh somethingClever()")
 
-def badBoyMIDI():
-    somethingClever(unitLengthMillis=4.000)
+def patternLangSomethingClever(patterns):
+    myMusic = pm.PrettyMIDI()
+
+    for currPattern in patterns:
+        # Create an Instrument instance for a cello instrument
+        myMusicProgram = pm.instrument_name_to_program('cello')
+        currInstr = pm.Instrument(program=myMusicProgram,name=currPattern['sampleLabel'])
+
+        for i in range(currPattern['numRepeats']):
+            currStartTime = currPattern['start'] + i*currPattern['unitLengthSecs']
+            currEndTime = currPattern['start'] + (i+1)*currPattern['unitLengthSecs']
+            recurseGrammar(pattern=currPattern['pattern'], currRecursiveDepth=currPattern['recurse'], startTime=currStartTime , endTime=currEndTime, instr=currInstr)
+
+        myMusic.instruments.append(currInstr)
+
+    myMusic.write("woahnow.mid")
+    print("Wrote+returned midi in patternLangSomethingClever")
+    # import pdb; pdb.set_trace()
+    return myMusic
+
+def badBoyMIDI(pattern, recursiveDepth, songLengthSecs):
+    myMusicMIDI = somethingClever(pattern, recursiveDepth, unitLengthSecs=songLengthSecs)
+    return myMusicMIDI
+    return " u go gadang __ZN4TSNE31computeSquaredEuclideanDistanceEPdiiS0_"
+
+def badBoyMIDIPatternLang(patterns):
+    myMusicMIDI = patternLangSomethingClever(patterns)
+    return myMusicMIDI
     return " u go gadang __ZN4TSNE31computeSquaredEuclideanDistanceEPdiiS0_"

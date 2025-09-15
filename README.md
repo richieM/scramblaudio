@@ -1,6 +1,9 @@
 # scramblaudio
 Audio remixer
 
+## Demo
+  [demo demo demo](https://colab.research.google.com/drive/1YmytvLATKEFAuNBoLSM1SKGJcV85I1A2#scrollTo=1pW6UORmCMP3)
+
 ## Diff files and what they do
 - scramblaudio.py
   So I think this is the original guy, which I wrote like in 2016-7 as a response to the scramblaudio midi stuff that I was doing at WACM.

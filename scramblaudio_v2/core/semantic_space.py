@@ -6,8 +6,21 @@ intelligent sample selection based on similarity, proximity, etc.
 """
 
 import numpy as np
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from .sample_bank import Sample
+
+# Optional dimensionality reduction
+try:
+    from sklearn.manifold import TSNE
+    TSNE_AVAILABLE = True
+except ImportError:
+    TSNE_AVAILABLE = False
+
+try:
+    import umap
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
 
 
 class SemanticSpace:
@@ -30,6 +43,7 @@ class SemanticSpace:
                          If None, uses all common features
         """
         self.samples = samples
+        self._projection_2d = None  # Cache for 2D projection
 
         # Determine which features to use
         if feature_keys is None:
@@ -253,6 +267,206 @@ class SemanticSpace:
             }
 
         return summary
+
+    def compute_2d_projection(self, method: str = 'tsne',
+                             perplexity: int = 30,
+                             n_neighbors: int = 15,
+                             random_state: int = 42) -> np.ndarray:
+        """
+        Compute 2D projection of feature space for visualization
+
+        Args:
+            method: 'tsne' or 'umap'
+            perplexity: t-SNE perplexity parameter
+            n_neighbors: UMAP n_neighbors parameter
+            random_state: Random seed for reproducibility
+
+        Returns:
+            Array of shape (n_samples, 2) with 2D coordinates
+        """
+        if len(self.feature_matrix) < 2:
+            return np.array([])
+
+        # Use cached projection if available
+        if self._projection_2d is not None:
+            return self._projection_2d
+
+        if method == 'tsne' and TSNE_AVAILABLE:
+            # Adjust perplexity if we have few samples
+            actual_perplexity = min(perplexity, len(self.samples) - 1)
+            tsne = TSNE(n_components=2, perplexity=actual_perplexity,
+                       random_state=random_state, n_iter=1000)
+            self._projection_2d = tsne.fit_transform(self.feature_matrix)
+
+        elif method == 'umap' and UMAP_AVAILABLE:
+            actual_neighbors = min(n_neighbors, len(self.samples) - 1)
+            reducer = umap.UMAP(n_components=2, n_neighbors=actual_neighbors,
+                              random_state=random_state)
+            self._projection_2d = reducer.fit_transform(self.feature_matrix)
+
+        else:
+            # Fallback: PCA (always available via numpy)
+            print(f"Warning: {method} not available, using PCA fallback")
+            # Center the data
+            centered = self.feature_matrix - np.mean(self.feature_matrix, axis=0)
+            # Compute covariance
+            cov = np.cov(centered.T)
+            # Get top 2 eigenvectors
+            eigenvalues, eigenvectors = np.linalg.eig(cov)
+            idx = eigenvalues.argsort()[::-1][:2]
+            components = eigenvectors[:, idx].real
+            self._projection_2d = centered @ components
+
+        return self._projection_2d
+
+    def navigate_vector(self, start_sample: Sample, direction: np.ndarray,
+                       distance: float = 1.0) -> Optional[Sample]:
+        """
+        Navigate through space in a specific direction vector
+
+        Args:
+            start_sample: Starting sample
+            direction: Direction vector in feature space (will be normalized)
+            distance: How far to move
+
+        Returns:
+            Closest sample to the target point
+        """
+        if start_sample not in self.samples:
+            return None
+
+        start_idx = self.samples.index(start_sample)
+        start_features = self.feature_matrix[start_idx]
+
+        # Normalize direction
+        direction = np.array(direction)
+        if np.linalg.norm(direction) > 0:
+            direction = direction / np.linalg.norm(direction)
+
+        # Calculate target point
+        target = start_features + direction * distance
+
+        # Find closest sample
+        distances = np.linalg.norm(self.feature_matrix - target, axis=1)
+        closest_idx = np.argmin(distances)
+
+        return self.samples[closest_idx]
+
+    def navigate_gradient(self, start_sample: Sample, feature_name: str,
+                         amount: float = 1.0) -> Optional[Sample]:
+        """
+        Navigate along a specific feature dimension
+
+        Args:
+            start_sample: Starting sample
+            feature_name: Which feature to move along ('brightness', 'energy', etc.)
+            amount: How much to increase/decrease (in standard deviations)
+
+        Returns:
+            Sample moved along that feature dimension
+        """
+        if start_sample not in self.samples:
+            return None
+
+        # Find feature index
+        feature_idx = None
+        current_dim = 0
+        for key in self.feature_keys:
+            sample_val = self.samples[0].features.get(key)
+            if isinstance(sample_val, (list, np.ndarray)):
+                num_dims = len(sample_val)
+                if key == feature_name:
+                    # For multi-dimensional features, use first dimension
+                    feature_idx = current_dim
+                    break
+                current_dim += num_dims
+            else:
+                if key == feature_name:
+                    feature_idx = current_dim
+                    break
+                current_dim += 1
+
+        if feature_idx is None:
+            print(f"Warning: Feature '{feature_name}' not found")
+            return start_sample
+
+        # Create direction vector along this feature
+        direction = np.zeros(self.feature_matrix.shape[1])
+        direction[feature_idx] = 1.0
+
+        return self.navigate_vector(start_sample, direction, amount)
+
+    def orbit_sample(self, center_sample: Sample, radius: float = 1.0,
+                    steps: int = 8) -> List[Sample]:
+        """
+        Get samples in a circle around a center point
+
+        Args:
+            center_sample: Center of the orbit
+            radius: Orbit radius
+            steps: Number of samples around the circle
+
+        Returns:
+            List of samples around the orbit
+        """
+        if center_sample not in self.samples:
+            return []
+
+        center_idx = self.samples.index(center_sample)
+        center_features = self.feature_matrix[center_idx]
+
+        # If we have 2D projection, orbit in that space; otherwise use first 2 dims
+        if self._projection_2d is not None:
+            center_2d = self._projection_2d[center_idx]
+            work_space = self._projection_2d
+        else:
+            center_2d = center_features[:2]
+            work_space = self.feature_matrix[:, :2]
+
+        orbit_samples = []
+        for i in range(steps):
+            angle = 2 * np.pi * i / steps
+            offset = radius * np.array([np.cos(angle), np.sin(angle)])
+            target = center_2d + offset
+
+            # Find closest in 2D space
+            distances = np.linalg.norm(work_space - target, axis=1)
+            closest_idx = np.argmin(distances)
+            orbit_samples.append(self.samples[closest_idx])
+
+        return orbit_samples
+
+    def random_walk(self, start_sample: Sample, steps: int = 10,
+                   step_size: float = 0.5) -> List[Sample]:
+        """
+        Perform a random walk through feature space
+
+        Args:
+            start_sample: Starting point
+            steps: Number of steps to take
+            step_size: Size of each random step
+
+        Returns:
+            List of samples along the walk path
+        """
+        if start_sample not in self.samples:
+            return []
+
+        path = [start_sample]
+        current_sample = start_sample
+
+        for _ in range(steps - 1):
+            # Random direction in full feature space
+            direction = np.random.randn(self.feature_matrix.shape[1])
+            next_sample = self.navigate_vector(current_sample, direction, step_size)
+
+            if next_sample is not None:
+                path.append(next_sample)
+                current_sample = next_sample
+            else:
+                break
+
+        return path
 
     def __repr__(self):
         return (f"SemanticSpace({len(self.samples)} samples, "

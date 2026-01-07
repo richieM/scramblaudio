@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from .sample_bank import Sample
 from .arrangement import Arrangement
+from .semantic_space import SemanticSpace
 
 try:
     from .effects import EffectsChain
@@ -33,10 +34,13 @@ class Renderer:
             sample_rate: Output sample rate in Hz
         """
         self.sample_rate = sample_rate
+        self._resample_cache = {}  # Cache resampled audio
 
     def render_pattern(self, pattern: List[int], samples: List[Sample],
                       onset_times: List[float],
-                      duration: float) -> np.ndarray:
+                      duration: float,
+                      semantic_path: Optional['SemanticPath'] = None,
+                      time_offset: float = 0.0) -> np.ndarray:
         """
         Render a single pattern with given samples
 
@@ -45,6 +49,8 @@ class Renderer:
             samples: Pool of samples to choose from
             onset_times: Time in seconds for each step
             duration: Total duration in seconds
+            semantic_path: Optional SemanticPath for automated sample selection
+            time_offset: Offset for semantic path timing
 
         Returns:
             Audio buffer as numpy array
@@ -59,8 +65,15 @@ class Renderer:
         # Place samples at onset times
         for i, (hit, onset_time) in enumerate(zip(pattern, onset_times)):
             if hit == 1:
-                # Choose a sample (random for now, could be smarter)
-                sample = np.random.choice(samples)
+                # Choose a sample
+                if semantic_path is not None:
+                    # Use semantic path for sample selection
+                    sample = semantic_path.get_sample_at_time(time_offset + onset_time)
+                    if sample is None:
+                        sample = np.random.choice(samples)
+                else:
+                    # Random selection (original behavior)
+                    sample = np.random.choice(samples)
 
                 # Resample if needed
                 audio = self._resample_if_needed(sample)
@@ -79,7 +92,8 @@ class Renderer:
     def render_track(self, patterns: Dict[int, List[int]],
                     samples_by_section: Dict[int, List[Sample]],
                     onset_times_by_section: Dict[int, List[float]],
-                    section_durations: List[float]) -> np.ndarray:
+                    section_durations: List[float],
+                    semantic_paths: Optional[Dict[int, 'SemanticPath']] = None) -> np.ndarray:
         """
         Render a complete track across multiple sections
 
@@ -88,6 +102,7 @@ class Renderer:
             samples_by_section: Dict mapping section index to sample pool
             onset_times_by_section: Dict mapping section index to onset times
             section_durations: Duration of each section in seconds
+            semantic_paths: Optional dict mapping section index to SemanticPath
 
         Returns:
             Complete audio track
@@ -105,12 +120,17 @@ class Renderer:
                 current_time += duration
                 continue
 
+            # Get semantic path for this section
+            semantic_path = semantic_paths.get(section_idx) if semantic_paths else None
+
             # Render this section
             section_audio = self.render_pattern(
                 patterns[section_idx],
                 samples_by_section.get(section_idx, []),
                 onset_times_by_section.get(section_idx, []),
-                duration
+                duration,
+                semantic_path=semantic_path,
+                time_offset=0.0  # Reset time for each section
             )
 
             # Place in output buffer
@@ -289,6 +309,7 @@ class Renderer:
     def _resample_if_needed(self, sample: Sample) -> np.ndarray:
         """
         Resample audio if sample rate doesn't match renderer's
+        Uses caching to avoid resampling the same sample multiple times.
 
         Args:
             sample: Sample object
@@ -299,19 +320,28 @@ class Renderer:
         if sample.sr == self.sample_rate:
             return sample.audio
 
-        # Simple linear resampling (could use better method)
+        # Check cache first
+        cache_key = (sample.path, self.sample_rate)
+        if cache_key in self._resample_cache:
+            return self._resample_cache[cache_key]
+
+        # Need to resample
         ratio = self.sample_rate / sample.sr
         new_length = int(len(sample.audio) * ratio)
 
-        # Use scipy if available, otherwise simple interpolation
+        # Use librosa for fast resampling if available
         try:
-            from scipy import signal
-            return signal.resample(sample.audio, new_length)
+            import librosa
+            resampled = librosa.resample(sample.audio, orig_sr=sample.sr, target_sr=self.sample_rate)
         except ImportError:
-            # Fallback: simple linear interpolation
+            # Fallback: simple linear interpolation (fast but lower quality)
             old_indices = np.linspace(0, len(sample.audio) - 1, len(sample.audio))
             new_indices = np.linspace(0, len(sample.audio) - 1, new_length)
-            return np.interp(new_indices, old_indices, sample.audio)
+            resampled = np.interp(new_indices, old_indices, sample.audio)
+
+        # Cache it
+        self._resample_cache[cache_key] = resampled
+        return resampled
 
     def apply_envelope(self, audio: np.ndarray, attack: float = 0.01,
                       release: float = 0.05) -> np.ndarray:

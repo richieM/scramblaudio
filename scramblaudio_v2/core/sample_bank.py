@@ -74,10 +74,12 @@ class SampleBank:
                 features = {}
                 if extract_features:
                     try:
-                        from ..utils.features import extract_features
-                        features = extract_features(audio, sr)
-                    except ImportError:
-                        pass
+                        from ..utils.features import extract_features as extract_fn
+                        features = extract_fn(audio, sr)
+                    except ImportError as e:
+                        print(f"Warning: Could not import feature extraction: {e}")
+                    except Exception as e:
+                        print(f"Warning: Feature extraction failed: {e}")
 
                 sample = Sample(str(wav_path), audio, sr, features)
                 self.samples[category].append(sample)

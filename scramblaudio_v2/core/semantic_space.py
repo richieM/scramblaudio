@@ -34,10 +34,17 @@ class SemanticSpace:
         # Determine which features to use
         if feature_keys is None:
             # Find features common to all samples
+            # Exclude tempo by default as it can be NaN for short samples
+            exclude_features = {'tempo'}
+
             if samples:
                 all_keys = set(samples[0].features.keys())
                 for sample in samples[1:]:
                     all_keys &= set(sample.features.keys())
+
+                # Remove excluded features
+                all_keys -= exclude_features
+
                 self.feature_keys = sorted(list(all_keys))
             else:
                 self.feature_keys = []

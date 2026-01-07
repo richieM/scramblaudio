@@ -5,6 +5,7 @@ from .rhythm import euclidean_rhythm, polymeter_rhythm
 from .semantic_space import SemanticSpace
 from .arrangement import Section, Arrangement
 from .renderer import Renderer
+from .effects import EffectsChain, EffectConfig, create_ambient_chain, create_distorted_chain, create_lo_fi_chain, create_clean_chain
 
 __all__ = [
     'SampleBank',
@@ -13,5 +14,11 @@ __all__ = [
     'SemanticSpace',
     'Section',
     'Arrangement',
-    'Renderer'
+    'Renderer',
+    'EffectsChain',
+    'EffectConfig',
+    'create_ambient_chain',
+    'create_distorted_chain',
+    'create_lo_fi_chain',
+    'create_clean_chain'
 ]

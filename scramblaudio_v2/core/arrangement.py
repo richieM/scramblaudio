@@ -23,6 +23,8 @@ class Section:
                     Can be list of names or 'all'
         rhythm_params: Dict of rhythm parameters per instrument
         semantic_params: Dict of semantic space parameters per instrument
+        effects_params: Dict of effects parameters per instrument
+                       Can reference preset chains or custom effects
         metadata: Additional custom parameters
     """
 
@@ -33,6 +35,7 @@ class Section:
     instruments: Union[List[str], str] = 'all'
     rhythm_params: Dict[str, Dict] = field(default_factory=dict)
     semantic_params: Dict[str, Dict] = field(default_factory=dict)
+    effects_params: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def duration_seconds(self) -> float:

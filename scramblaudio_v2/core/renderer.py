@@ -7,9 +7,15 @@ final audio output (stems or mixed down).
 
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from .sample_bank import Sample
 from .arrangement import Arrangement
+
+try:
+    from .effects import EffectsChain
+    EFFECTS_AVAILABLE = True
+except ImportError:
+    EFFECTS_AVAILABLE = False
 
 
 class Renderer:
@@ -191,6 +197,52 @@ class Renderer:
             mixed = mixed / np.max(np.abs(mixed)) * 0.95
 
         return mixed
+
+    def apply_effects(self, audio: np.ndarray,
+                     effects_chain: Union['EffectsChain', None]) -> np.ndarray:
+        """
+        Apply effects chain to audio
+
+        Args:
+            audio: Input audio array
+            effects_chain: EffectsChain object or None
+
+        Returns:
+            Processed audio
+        """
+        if effects_chain is None or not EFFECTS_AVAILABLE:
+            return audio
+
+        return effects_chain.process(audio)
+
+    def apply_track_effects(self, tracks: Dict[str, np.ndarray],
+                           effects_chains: Dict[str, 'EffectsChain']) -> Dict[str, np.ndarray]:
+        """
+        Apply effects to multiple tracks
+
+        Args:
+            tracks: Dict mapping track names to audio arrays
+            effects_chains: Dict mapping track names to EffectsChain objects
+
+        Returns:
+            Dict of processed tracks
+        """
+        if not EFFECTS_AVAILABLE:
+            print("Warning: Effects not available, returning unprocessed tracks")
+            return tracks
+
+        processed_tracks = {}
+
+        for track_name, audio in tracks.items():
+            if track_name in effects_chains:
+                processed_tracks[track_name] = self.apply_effects(
+                    audio,
+                    effects_chains[track_name]
+                )
+            else:
+                processed_tracks[track_name] = audio
+
+        return processed_tracks
 
     def write_wav(self, audio: np.ndarray, filepath: str):
         """

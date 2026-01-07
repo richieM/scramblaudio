@@ -4,3 +4,8 @@ node_modules*
 .DS_Store
 __pycache__/
 *.pyc
+venv/
+output/
+*.pkl
+samples/temp_drum_samples/
+samples/sample_cache.pkl

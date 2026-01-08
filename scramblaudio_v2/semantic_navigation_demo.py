@@ -33,15 +33,18 @@ def create_semantic_journey():
 
     # Load samples
     print("\n📦 Loading samples...")
-    bank = SampleBank()
 
-    # Try to load from cache first
-    cache_file = '../samples/sample_cache.pkl'
+    # Try to load from cache first (use world_sounds if available)
+    cache_file = '../samples/world_sounds_cache.pkl'
+    if not Path(cache_file).exists():
+        cache_file = '../samples/sample_cache.pkl'
+
     if Path(cache_file).exists():
-        print("   Loading from cache...")
-        bank.load_cache(cache_file)
+        print(f"   Loading from cache: {cache_file}")
+        bank = SampleBank.load_cache(cache_file)
     else:
         # Load from directories
+        bank = SampleBank()
         bank.load_directories({
             'kick': '../samples/kicks/',
             'snare': '../samples/snares/',
